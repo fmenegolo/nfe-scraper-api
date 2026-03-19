@@ -31,14 +31,14 @@ Regex-Driven Extraction: Extração de número, série e data de emissão via ex
 Normalização Monetária: Tratamento automático de separadores decimais e de milhar brasileiros para conversão em float (padrão SQL/Python).
 Fallback de Chave: Em caso de falha na leitura da chave de 44 dígitos, o sistema utiliza um sistema de pastas cronológico baseado na data de ingestão para garantir que nenhum dado seja perdido.
 
-##🛠️ Stack Tecnológica
-Backend: Python 3.10 / FastAPI / Uvicorn.
-Vision: OpenCV (WeChatQR Model) & PyZbar.
-Crawler: Playwright (Chromium Headless).
-Storage: MinIO (S3 Compatible) & PostgreSQL (via asyncpg).
-Parsing: BeautifulSoup4 (LXML).
+## 🛠️ Stack Tecnológica
+- Backend: Python 3.10 / FastAPI / Uvicorn.
+- Vision: OpenCV (WeChatQR Model) & PyZbar.
+- Crawler: Playwright (Chromium Headless).
+- Storage: MinIO (S3 Compatible) & PostgreSQL (via asyncpg).
+- Parsing: BeautifulSoup4 (LXML).
 
-###🏗️ Estrutura do Projeto
+### 🏗️ Estrutura do Projeto
 ```text
 .
 ├── main.py              # Coração da API e Lógica de Processamento
@@ -48,7 +48,7 @@ Parsing: BeautifulSoup4 (LXML).
 └── .github/workflows/   # CI/CD: Build automático para ghcr.io
 ```
 
-##🚀 Como Rodar
+## 🚀 Como Rodar
 Via Docker (Recomendado)
 A imagem está consolidada e disponível via GitHub Container Registry:
 ```bash
