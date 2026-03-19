@@ -5,6 +5,7 @@ import cv2
 import numpy as np
 import os
 import json
+import logging
 from datetime import datetime
 from contextlib import asynccontextmanager
 
@@ -16,6 +17,13 @@ from minio.error import S3Error
 import asyncpg
 
 from fastapi import FastAPI, UploadFile, File, HTTPException, status
+
+logging.basicConfig(
+    level=os.getenv("LOG_LEVEL", "INFO").upper(),
+    format='{"time":"%(asctime)s","level":"%(levelname)s","logger":"%(name)s","message":"%(message)s"}',
+)
+
+logger = logging.getLogger(__name__)
 
 # --- CONFIGURAÇÕES ---
 MINIO_CONFIG = {
@@ -34,11 +42,22 @@ DB_CONFIG = {
     "database": os.getenv("POSTGRES_DB", "nfe_database")
 }
 
+# Limite de contextos/abas Playwright em paralelo
+PLAYWRIGHT_MAX_CONTEXTS = int(os.getenv("PLAYWRIGHT_MAX_CONTEXTS", "4"))
+
+# Limite de tamanho do upload (MB)
+MAX_UPLOAD_SIZE_MB = int(os.getenv("MAX_UPLOAD_SIZE_MB", "5"))
+MAX_UPLOAD_SIZE_BYTES = MAX_UPLOAD_SIZE_MB * 1024 * 1024
+
+# Diretório dos modelos do WeChat QR Code (padrão: pasta opencv_models ao lado do main.py)
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+OPENCV_MODELS_DIR = os.getenv("OPENCV_MODELS_DIR", os.path.join(BASE_DIR, "opencv_models"))
+
 detector = cv2.wechat_qrcode_WeChatQRCode(
-    "/app/opencv_models/detect.prototxt",
-    "/app/opencv_models/detect.caffemodel",
-    "/app/opencv_models/sr.prototxt",
-    "/app/opencv_models/sr.caffemodel"
+    os.path.join(OPENCV_MODELS_DIR, "detect.prototxt"),
+    os.path.join(OPENCV_MODELS_DIR, "detect.caffemodel"),
+    os.path.join(OPENCV_MODELS_DIR, "sr.prototxt"),
+    os.path.join(OPENCV_MODELS_DIR, "sr.caffemodel"),
 )
 
 def normalize_sefaz_url(url):
@@ -54,6 +73,8 @@ class BrowserManager:
     def __init__(self):
         self.playwright = None
         self.browser = None
+        # Controla quantos contextos (abas anônimas) podem existir ao mesmo tempo
+        self.semaphore = asyncio.Semaphore(PLAYWRIGHT_MAX_CONTEXTS)
 
     async def start(self):
         self.playwright = await async_playwright().start()
@@ -76,21 +97,33 @@ app = FastAPI(lifespan=lifespan)
 # --- LOGICA 1: VISÃO COMPUTACIONAL (QR CODE) ---
 async def decode_qr_code_from_image(file: UploadFile):
     image_data = await file.read()
+
+    # Validação de tamanho do arquivo
+    if len(image_data) > MAX_UPLOAD_SIZE_BYTES:
+        logger.warning(
+            "Arquivo de upload excedeu o limite: size_bytes=%d max_bytes=%d", 
+            len(image_data), 
+            MAX_UPLOAD_SIZE_BYTES,
+        )
+        raise HTTPException(
+            status_code=413,
+            detail=f"Arquivo muito grande. Tamanho máximo permitido: {MAX_UPLOAD_SIZE_MB} MB.",
+        )
     np_array = np.frombuffer(image_data, np.uint8)
     original_image = cv2.imdecode(np_array, cv2.IMREAD_COLOR)
 
     if original_image is None:
-        print("[❌] Falha ao converter bytes em imagem via OpenCV")
+        logger.error("Falha ao converter bytes em imagem via OpenCV")
         return None
       
     # --- TENTATIVA 1: WECHAT QR (O Atacante) ---
     res, points = detector.detectAndDecode(original_image)
     if res and res[0]:
-        print(f"[🚀] Sucesso Total via WeChat QR: {res[0]}")
+        logger.info("Sucesso na leitura de QR via WeChat QR: %s", res[0])
         return normalize_sefaz_url(res[0])
     
     # --- TENTATIVA 2: SE O WECHAT FALHAR (O Goleiro/PyZbar) ---
-    print("[!] WeChat detector commented out or failed. Iniciando filtros manuais + PyZbar...")
+    logger.info("WeChat detector falhou. Iniciando filtros manuais + PyZbar...")
     
     def get_variants(base_img):
         gray = cv2.cvtColor(base_img, cv2.COLOR_BGR2GRAY)
@@ -114,11 +147,10 @@ async def decode_qr_code_from_image(file: UploadFile):
         decoded_objects = decode(variant)
         if decoded_objects:
             qr_data = decoded_objects[0].data.decode('utf-8')
-            print(f"[✅] QR DETECTADO via {name}: {qr_data}")
-            
+            logger.info("QR detectado via %s: %s", name, qr_data)
             return normalize_sefaz_url(qr_data)
 
-    print("[❌] QR Code não detectado em nenhuma variante.")
+    logger.warning("QR Code não detectado em nenhuma variante.")
     return None
 
 # --- LOGICA 2: SCRAPING (Usando o Singleton BrowserManager) ---
@@ -130,6 +162,7 @@ async def scrape_nfe_content(url: str):
     
     for attempt in range(MAX_RETRIES):
         context = None
+        await browser_mgr.semaphore.acquire()
         try:
             # Criamos apenas um NOVO CONTEXTO (como uma aba anônima) 
             # Isso é leve e rápido, aproveitando o browser já aberto.
@@ -140,26 +173,31 @@ async def scrape_nfe_content(url: str):
             
             # Otimização de tráfego
             await page.route("**/*", lambda r: r.abort() if r.request.resource_type in ['image', 'font', 'stylesheet'] else r.continue_())
-            
-            print(f"[*] Tentativa {attempt + 1}/{MAX_RETRIES}: Acessando SEFAZ...")
+
+            logger.info("Tentativa %d/%d: acessando SEFAZ", attempt + 1, MAX_RETRIES)
             
             # Execução do acesso
             response = await page.goto(url, wait_until="networkidle", timeout=60000)
-            
+
             if response:
-                print(f"[*] SEFAZ Status: {response.status}")
+                logger.info("SEFAZ status: %d", response.status)
                 
             await page.wait_for_selector("#tabResult", timeout=45000)
             
             html_content = await page.content()
-            
+
             # Validação simples de sucesso
             if html_content and len(html_content) > 1000:
-                print(f"[✅] SUCESSO: HTML capturado ({len(html_content)} bytes)")
+                logger.info("HTML capturado com sucesso: size_bytes=%d", len(html_content))
                 return html_content
             
         except Exception as e:
-            print(f"[❌] Erro na tentativa {attempt + 1}: {type(e).__name__} - {str(e)}")
+            logger.error(
+                "Erro na tentativa %d de scraping: %s - %s",
+                attempt + 1,
+                type(e).__name__,
+                str(e),
+            )
             if attempt == MAX_RETRIES - 1:
                 return None
             await asyncio.sleep(2)
@@ -167,6 +205,7 @@ async def scrape_nfe_content(url: str):
             # FECHAMOS APENAS O CONTEXTO/ABA, nunca o browser_mgr.browser!
             if context:
                 await context.close()
+            browser_mgr.semaphore.release()
                 
     return None
   
@@ -210,7 +249,7 @@ async def save_to_bronze(html_content: str, qr_key: str) -> str:
             length=len(html_bytes), 
             content_type="text/html"
         )
-        print(f"[✅] Bronze S3: Salvo em {s3_path}")
+        logger.info("Bronze S3: salvo em %s", s3_path)
 
         # 3. Persistência Postgres (Respeitando sua estrutura de colunas)
         conn = await asyncpg.connect(**DB_CONFIG)
@@ -235,13 +274,17 @@ async def save_to_bronze(html_content: str, qr_key: str) -> str:
         s3_path,                                           # s3_path_bronze
         "api_docker"                                       # origem
         )
-        
-        print(f"[✅] Bronze DB: Metadados vinculados à chave {qr_key}")
+
+        logger.info("Bronze DB: metadados vinculados à chave %s", qr_key)
         return s3_path
 
     except Exception as e:
-        print(f"[❌] Erro Camada Bronze: {e}")
-        raise HTTPException(status_code=500, detail=f"Erro Bronze: {str(e)}")
+        logger.exception("[❌] Erro Camada Bronze ao processar chave %s", qr_key)
+        # Mensagem genérica para o cliente, sem detalhes internos de infraestrutura
+        raise HTTPException(
+            status_code=500,
+            detail="Erro interno na camada de armazenamento (bronze). Tente novamente mais tarde."
+        )
     finally:
         if conn:
             await conn.close()
@@ -323,7 +366,7 @@ async def process_html_to_silver(html_content: str):
                 silver_data['items'].append(item)
                 calc_total += item['item_total']
             except Exception as e:
-                print(f"[❌] Erro no item: {e}")
+                logger.exception("Erro ao processar item da NFe: %s", e)
                 continue
                 
     silver_data['calculated_items_total'] = round(calc_total, 2)
