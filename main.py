@@ -233,7 +233,7 @@ async def save_to_bronze(html_content: str, qr_key: str) -> str:
             mes = f"{today.month:02d}"
             print(f"[⚠️] Aviso: Chave inválida ({qr_key}). Usando data atual para pastas.")
 
-        s3_path = f"qrcode/{ano}/{mes}/{qr_key}.html"
+        s3_path = f"bronze/nfce/{ano}/{mes}/{qr_key}.html"
         
         # 2. Upload para o MinIO
         if not client.bucket_exists(MINIO_CONFIG["bucket"]): 
