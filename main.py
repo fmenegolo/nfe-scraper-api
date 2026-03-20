@@ -12,9 +12,9 @@ from contextlib import asynccontextmanager
 from pyzbar.pyzbar import decode
 from playwright.async_api import async_playwright, TimeoutError as PlaywrightTimeoutError
 from bs4 import BeautifulSoup
-from minio import Minio
-from minio.error import S3Error
-import asyncpg
+#from minio import Minio
+#from minio.error import S3Error
+#import asyncpg
 
 from fastapi import FastAPI, UploadFile, File, HTTPException, status
 
@@ -26,21 +26,21 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # --- CONFIGURAÇÕES ---
-MINIO_CONFIG = {
-    "endpoint": os.getenv("MINIO_ENDPOINT", "localhost:9000"),
-    "access_key": os.getenv("MINIO_ACCESS_KEY", "minioadmin"),
-    "secret_key": os.getenv("MINIO_SECRET_KEY", "minioadmin"),
-    "secure": os.getenv("MINIO_SECURE", "False").lower() == "true",
-    "bucket": os.getenv("MINIO_BUCKET_NAME", "bronze")
-}
-
-DB_CONFIG = {
-    "host": os.getenv("POSTGRES_HOST", "localhost"),
-    "port": os.getenv("POSTGRES_PORT", "5432"),
-    "user": os.getenv("POSTGRES_USER", "user"),
-    "password": os.getenv("POSTGRES_PASSWORD", "password"),
-    "database": os.getenv("POSTGRES_DB", "nfe_database")
-}
+#MINIO_CONFIG = {
+#    "endpoint": os.getenv("MINIO_ENDPOINT", "localhost:9000"),
+#    "access_key": os.getenv("MINIO_ACCESS_KEY", "minioadmin"),
+#    "secret_key": os.getenv("MINIO_SECRET_KEY", "minioadmin"),
+#    "secure": os.getenv("MINIO_SECURE", "False").lower() == "true",
+#    "bucket": os.getenv("MINIO_BUCKET_NAME", "bronze")
+#}
+#
+#DB_CONFIG = {
+#    "host": os.getenv("POSTGRES_HOST", "localhost"),
+#    "port": os.getenv("POSTGRES_PORT", "5432"),
+#    "user": os.getenv("POSTGRES_USER", "user"),
+#    "password": os.getenv("POSTGRES_PASSWORD", "password"),
+#    "database": os.getenv("POSTGRES_DB", "nfe_database")
+#}
 
 # Limite de contextos/abas Playwright em paralelo
 PLAYWRIGHT_MAX_CONTEXTS = int(os.getenv("PLAYWRIGHT_MAX_CONTEXTS", "4"))
@@ -411,12 +411,12 @@ async def ingest_nfe(file: UploadFile = File(...)):
     silver_data = await process_html_to_silver(html)
 
     # Persiste HTML bruto + metadados na Bronze (MinIO + Postgres)
-    s3_path = await save_to_bronze(html, qr_key, silver_data, url)
+    #s3_path = await save_to_bronze(html, qr_key, silver_data, url)
     
     return {
         "status": "success",
         "chave": qr_key,
-        "s3_raw": s3_path,
+        "s3_raw": "disabled_in_lite_mode",
         "payload": silver_data
     }
 
