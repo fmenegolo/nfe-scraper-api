@@ -3,7 +3,7 @@ name: Build and Push Docker Image
 on:
   push:
     # Monitora as duas branches
-    branches: [ "main", "develop" ]
+    branches: [ "main", "develop", "lite" ]
 
 env:
   REGISTRY: ghcr.io
@@ -34,4 +34,7 @@ jobs:
           push: true
           # LÓGICA DE TAGS DINÂMICAS:
           tags: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.ref_name == 'main' && 'latest' || 'develop' }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ 
+              github.ref_name == 'main' && 'latest' || 
+              (github.ref_name == 'lite' && 'lite' || 'develop') 
+            }}
