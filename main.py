@@ -210,7 +210,7 @@ async def scrape_nfe_content(url: str):
     return None
   
 # --- LOGICA 3: ARMAZENAMENTO (MinIO & Postgres) ---
-async def save_to_bronze(html_content: str, qr_key: str) -> str:
+async def save_to_bronze(html_content: str, qr_key: str, silver_payload: dict, url_origem: str) -> str:
     conn = None
     try:
         client = Minio(
@@ -231,7 +231,7 @@ async def save_to_bronze(html_content: str, qr_key: str) -> str:
             today = datetime.now()
             ano = str(today.year)
             mes = f"{today.month:02d}"
-            print(f"[⚠️] Aviso: Chave inválida ({qr_key}). Usando data atual para pastas.")
+            logger.warning("Chave de acesso inválida para organizacao S3: %s", qr_key)
 
         s3_path = f"bronze/nfce/{ano}/{mes}/{qr_key}.html"
         
@@ -256,23 +256,34 @@ async def save_to_bronze(html_content: str, qr_key: str) -> str:
         
         # Nota: O 'id' é serial, então não precisamos passar no INSERT.
         # Usamos ON CONFLICT para não duplicar notas se processadas 2x.
+
+        status_validacao = None
+        if isinstance(silver_payload, dict):
+            status_validacao = silver_payload.get("validation")
+
         await conn.execute("""
             INSERT INTO bronze.nfe_raw (
-                chave_acesso, 
-                payload_json, 
-                s3_path_bronze, 
-                origem
-            ) 
-            VALUES ($1, $2, $3, $4)
-            ON CONFLICT (chave_acesso) 
-            DO UPDATE SET 
+                chave_acesso,
+                payload_json,
+                s3_path_bronze,
+                origem,
+                url_origem,
+                status_validacao
+            )
+            VALUES ($1, $2, $3, $4, $5, $6)
+            ON CONFLICT (chave_acesso)
+            DO UPDATE SET
                 s3_path_bronze = EXCLUDED.s3_path_bronze,
+                payload_json = EXCLUDED.payload_json,
+                status_validacao = EXCLUDED.status_validacao,
                 ingestion_at = CURRENT_TIMESTAMP;
-        """, 
-        qr_key, 
-        json.dumps({"captured_via": "gemini_scraper_v3"}), # payload_json
-        s3_path,                                           # s3_path_bronze
-        "api_docker"                                       # origem
+        """,
+        qr_key,
+        json.dumps(silver_payload),   # payload_json
+        s3_path,                      # s3_path_bronze
+        "api_docker",               # origem
+        url_origem,                  # url_origem
+        status_validacao,            # status_validacao
         )
 
         logger.info("Bronze DB: metadados vinculados à chave %s", qr_key)
@@ -395,9 +406,12 @@ async def ingest_nfe(file: UploadFile = File(...)):
     
     html = await scrape_nfe_content(url)
     if not html: raise HTTPException(500, "Falha no scraping da SEFAZ")
-    
-    s3_path = await save_to_bronze(html, qr_key)
+
+    # Processa HTML para camada Silver antes de persistir na Bronze
     silver_data = await process_html_to_silver(html)
+
+    # Persiste HTML bruto + metadados na Bronze (MinIO + Postgres)
+    s3_path = await save_to_bronze(html, qr_key, silver_data, url)
     
     return {
         "status": "success",
