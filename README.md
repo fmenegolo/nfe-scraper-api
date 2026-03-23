@@ -41,7 +41,13 @@ Fallback de Chave: Em caso de falha na leitura da chave de 44 dígitos, o sistem
 ### 🏗️ Estrutura do Projeto
 ```text
 .
-├── main.py              # Coração da API e Lógica de Processamento
+├── main.py              # Ponto de entrada (reexporta app de api.py)
+├── api.py               # Definição do FastAPI e endpoints
+├── vision.py            # Visão computacional (WeChat QR + PyZbar)
+├── scraper.py           # Playwright (BrowserManager, scraping SEFAZ)
+├── storage.py           # Camada Bronze (MinIO + Postgres)
+├── parser.py            # Camada Silver (parsing HTML -> JSON)
+├── docs/                # Documentação em Markdown
 ├── Dockerfile           # Receita para build da imagem (Playwright + OpenCV)
 ├── requirements.txt     # Dependências fixadas para estabilidade
 ├── opencv_models/       # Modelos Prototxt e Caffemodel do WeChatQR
@@ -98,6 +104,16 @@ Variáveis adicionais de comportamento:
 
 - `POST /ingest/` – Recebe uma imagem (UploadFile), decodifica o QR Code, faz o scraping na SEFAZ, salva o HTML bruto no MinIO (camada Bronze) e registra metadados no Postgres. Também retorna um payload já parseado (camada Silver) com itens e totais.
 - `GET /` – Endpoint de healthcheck simples, retorna `{ "status": "online" }`.
+
+### 📚 Documentação Detalhada
+
+A documentação técnica mais completa está na pasta `docs/` do repositório:
+
+- [docs/Home.md](docs/Home.md) – visão geral e fluxo resumido da NFe Scraper API.
+- [docs/Instalacao.md](docs/Instalacao.md) – variáveis de ambiente, exemplos de deploy (Docker/CasaOS).
+- [docs/API.md](docs/API.md) – referência dos endpoints, payloads e códigos de resposta.
+- [docs/Arquitetura.md](docs/Arquitetura.md) – módulos internos, fluxo Bronze/Silver e responsabilidades.
+- [docs/Operacao.md](docs/Operacao.md) – operação, logging e troubleshooting de problemas comuns.
 
 #### ⚖️ Licença e Uso
 Desenvolvido para fins de Engenharia de Dados. O uso deste software deve respeitar os termos de serviço dos portais da SEFAZ.
