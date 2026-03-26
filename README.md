@@ -40,7 +40,7 @@ Fallback de Chave: Em caso de falha na leitura da chave de 44 dígitos, o sistem
 
 ### 🏗️ Estrutura do Projeto
 ```text
-.
+.raiz
 ├── main.py              # Ponto de entrada (reexporta app de api.py)
 ├── api.py               # Definição do FastAPI e endpoints
 ├── vision.py            # Visão computacional (WeChat QR + PyZbar)
