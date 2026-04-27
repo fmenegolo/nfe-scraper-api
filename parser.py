@@ -92,7 +92,7 @@ async def process_html_to_silver(html_content: str) -> dict:
 	product_table = soup.find("table", id="tabResult")
 	calc_total = 0.0
 	if product_table:
-		for row in product_table.find_all("tr", id=re.compile(r"Item "+""" "+"""")):
+		for row in product_table.find_all("tr", id=re.compile(r"Item \+")):
 			try:
 				item = {
 					"name": row.find(class_="txtTit").get_text(strip=True),

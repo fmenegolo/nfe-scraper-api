@@ -19,17 +19,21 @@ API de alta performance desenvolvida com FastAPI para automação do ciclo de vi
 
 ### 4. **Arquitetura de Dados (Medallion System)**
 A API já realiza o pré-processamento seguindo as melhores práticas de Data Engineering:
-🥉 Camada Bronze (Raw): O HTML original é persistido no MinIO e os metadados (chave de acesso, timestamp, origem) são registrados no PostgreSQL via asyncpg. O uso de ON CONFLICT garante a idempotência dos dados (sem duplicidade).
-🥈 Camada Silver (Refined): Um parser robusto em BeautifulSoup4 extrai:
-Dados do estabelecimento (CNPJ, Endereço).
-Totais da nota (Valor bruto, descontos, troco, método de pagamento).
-Itens detalhados (Nome, Qtd, Unidade, Valor Unitário).
-🧪 Validação de Integridade: O sistema calcula a soma real dos itens e compara com o valor total da SEFAZ (calculated_items_total vs gross_value), sinalizando qualquer discrepância de arredondamento ou leitura.
+
+- 🥉 Camada Bronze (Raw): 
+    - O HTML original é persistido no MinIO e os metadados (chave de acesso, timestamp, origem) são registrados no PostgreSQL via asyncpg.
+    - O uso de ON CONFLICT garante a idempotência dos dados (sem duplicidade).
+- 🥈 Camada Silver (Refined): Um parser robusto em BeautifulSoup4 extrai:
+    - Dados do estabelecimento (CNPJ, Endereço).
+    - Totais da nota (Valor bruto, descontos, troco, método de pagamento).
+    - Itens detalhados (Nome, Qtd, Unidade, Valor Unitário).
+- 🧪 Validação de Integridade: 
+    - O sistema calcula a soma real dos itens e compara com o valor total da SEFAZ (calculated_items_total vs gross_value), sinalizando qualquer discrepância de arredondamento ou leitura.
 
 ### 5. **Resiliência e Parsing**
-Regex-Driven Extraction: Extração de número, série e data de emissão via expressões regulares diretamente do bloco de informações da nota.
-Normalização Monetária: Tratamento automático de separadores decimais e de milhar brasileiros para conversão em float (padrão SQL/Python).
-Fallback de Chave: Em caso de falha na leitura da chave de 44 dígitos, o sistema utiliza um sistema de pastas cronológico baseado na data de ingestão para garantir que nenhum dado seja perdido.
+- Regex-Driven Extraction: Extração de número, série e data de emissão via expressões regulares diretamente do bloco de informações da nota.
+- Normalização Monetária: Tratamento automático de separadores decimais e de milhar brasileiros para conversão em float (padrão SQL/Python).
+- Fallback de Chave: Em caso de falha na leitura da chave de 44 dígitos, o sistema utiliza um sistema de pastas cronológico baseado na data de ingestão para garantir que nenhum dado seja perdido.
 
 ## 🛠️ Stack Tecnológica
 - Backend: Python 3.10 / FastAPI / Uvicorn.
@@ -40,7 +44,7 @@ Fallback de Chave: Em caso de falha na leitura da chave de 44 dígitos, o sistem
 
 ### 🏗️ Estrutura do Projeto
 ```text
-.
+.raiz
 ├── main.py              # Ponto de entrada (reexporta app de api.py)
 ├── api.py               # Definição do FastAPI e endpoints
 ├── vision.py            # Visão computacional (WeChat QR + PyZbar)
